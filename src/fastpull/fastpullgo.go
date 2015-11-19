@@ -4,6 +4,8 @@ package fastpull
 import (
 	"io"
 	hasher "crypto/sha1"
+	"os"
+	"bufio"
 )
 
 const ModeFixed = 0
@@ -42,4 +44,36 @@ func (h *HashReader)Read(b []byte)(n int,err error){
 		}
 	}
 	return readed,nil
+}
+type HashBlockMap map[[HashSize]byte]Block
+
+
+type Block struct{
+        filename string
+        offset int
+         length int
+}
+func MapFile(m map[[HashSize]byte]Block,file string){
+        ifile,err := os.Open(file)
+        if err != nil{
+                panic(err)
+        }
+        r := bufio.NewReader(ifile)
+        defer ifile.Close()
+        buf := make([]byte,BlockSize,BlockSize)
+        readed := 0
+        for {
+                len,err := r.Read(buf)
+		if err == io.EOF{return}
+                if err!=nil{
+                        panic(err)
+                }
+                sum := hasher.Sum(buf[:len])
+                m[sum]=Block{
+                        filename:file,
+                        offset:readed,
+                        length:len,
+                }
+                readed += len
+        }
 }

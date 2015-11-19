@@ -2,11 +2,13 @@ package main
 
 import ( 
   "fmt" 
+	"io/ioutil"
   "net/http" 
   "mime/multipart" 
   "bytes" 
   "os" 
-  "io" 
+  "io"
+	"fastpull"
   ) 
 
 
@@ -51,7 +53,41 @@ func postFile(filename string, target_url string) (*http.Response, error) {
   return http.DefaultClient.Do(req) 
 }
 
+func postHash(url string,file string){
+	mmap := make(fastpull.HashBlockMap)
+	fmt.Println("deal ",file)
+	fastpull.MapFile(mmap,file)
+	fmt.Println("finish ",file)
+	b := bytes.Buffer{}
+	for h,_ := range mmap{
+		b.Write(h[:])
+		fmt.Printf("[%x] \n",h)
+	}
+	req,err := http.NewRequest("POST",url,&b)
+	if err != nil{
+		panic(err)
+	}
+	client := &http.Client{}
+	res,err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	if res.StatusCode != http.StatusOK {
+                err = fmt.Errorf("bad status:%s",res.Status)
+		return
+        }
+	body,err := ioutil.ReadAll(res.Body)
+	if err != nil{
+		panic(err)
+	}
+	fmt.Println(string(body))
+}
 
 func main(){
-	postFile("test","http://10.10.19.104:8080/upload")
+	//postFile("test","http://10.10.19.104:8080/upload")
+	for i,name := range os.Args{
+		if i>0{
+			postHash("http://10.10.19.104:8080/hash",name)
+		}	
+	}
 }
