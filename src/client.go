@@ -53,10 +53,14 @@ func postFile(filename string, target_url string) (*http.Response, error) {
   return http.DefaultClient.Do(req) 
 }
 
-func postHash(url string,file string){
+func postHash(url string,file string,isFixed bool){
 	mmap := make(fastpull.HashBlockMap)
 	fmt.Println("deal ",file)
-	fastpull.MapFile(mmap,file)
+	if isFixed{
+		fastpull.MapFile(mmap,file)
+	}else{
+		fastpull.MapFile2(mmap,file)
+	}
 	fmt.Println("finish ",file)
 	b := bytes.Buffer{}
 	for h,_ := range mmap{
@@ -85,9 +89,18 @@ func postHash(url string,file string){
 
 func main(){
 	//postFile("test","http://10.10.19.104:8080/upload")
+	isFixed := true
+	for _,arg := range os.Args{
+		if arg == "-d"{
+			isFixed = false
+			break
+		}
+	}
 	for i,name := range os.Args{
 		if i>0{
-			postHash("http://10.10.19.104:8080/hash",name)
+			if name !="-d" {
+				postHash("http://10.10.19.104:8080/hash",name,isFixed)
+			}
 		}	
 	}
 }
