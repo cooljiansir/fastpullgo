@@ -96,8 +96,8 @@ func main(){
 	}
 	for i,name := range os.Args {
 		if i>0{
-			fmt.Println("scan ",name)
 			if name == "-d"{continue}
+			fmt.Println("scan ",name)
 			if isFixed{
 				fastpull.MapFile(hashmap,name)
 			}else{

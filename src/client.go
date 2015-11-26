@@ -61,10 +61,16 @@ func postHash(url string,file string,isFixed bool){
 	}else{
 		fastpull.MapFile2(mmap,file)
 	}
+	upsize := 0
+	totalsize := 0
+	indexsize := 0
 	fmt.Println("finish ",file)
 	b := bytes.Buffer{}
-	for h,_ := range mmap{
+	barray := []fastpull.Block {}
+	for h,bl := range mmap{
 		b.Write(h[:])
+		indexsize += len(h)
+		barray = append(barray,bl)
 		fmt.Printf("[%x] \n",h)
 	}
 	req,err := http.NewRequest("POST",url,&b)
@@ -85,6 +91,14 @@ func postHash(url string,file string,isFixed bool){
 		panic(err)
 	}
 	fmt.Println(string(body))
+	resstr := string(body)
+	for i:=0;i<len(resstr);i++{
+		if resstr[i]=='0'{
+			upsize += (barray[i]).Length()
+		}
+		totalsize += (barray[i]).Length()
+	}
+	fmt.Printf("%d/%d=%d%% %d/%d=%d%%\n",upsize,totalsize,100*upsize/totalsize,indexsize,totalsize,100*indexsize/totalsize)
 }
 
 func main(){
@@ -99,7 +113,7 @@ func main(){
 	for i,name := range os.Args{
 		if i>0{
 			if name !="-d" {
-				postHash("http://10.10.19.104:8080/hash",name,isFixed)
+				postHash("http://10.10.19.223:8080/hash",name,isFixed)
 			}
 		}	
 	}

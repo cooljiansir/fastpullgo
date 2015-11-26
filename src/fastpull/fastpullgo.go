@@ -52,8 +52,15 @@ type HashBlockMap map[[HashSize]byte]Block
 type Block struct{
         filename string
         offset int
-         length int
+        length int
 }
+func (b *Block)Length()int{
+	return b.length
+}
+func (b *Block)Offset()int{
+	return b.offset;
+}
+
 func MapFile(m map[[HashSize]byte]Block,file string){
         ifile,err := os.Open(file)
         if err != nil{
