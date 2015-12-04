@@ -1,2 +1,2 @@
-# fastpullgo
+# fastpushgo
 transfer file using dedup
