@@ -1,4 +1,4 @@
-package spliter
+package fastpush
 
 
 import (
@@ -6,6 +6,8 @@ import (
 	hasher "crypto/sha1"
 	"bufio"
 	"math"
+
+	"github.com/cooljiansir/fastpush"
 )
 
 const HashSize = hasher.Size
