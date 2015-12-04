@@ -29,7 +29,7 @@ func (b *Block)Offset()int{
 //split into dynamic blocks
 //maxSize is the max size of a block,min size of a block is maxSize/64
 //maxCount is the max block count,0 means no limit
-func Split(br bufio.Reader,maxSize int,maxCount int)[]Block{
+func Split(br *bufio.Reader,maxSize int,maxCount int)[]Block{
 	var h uint32            // rolling hash for finding fragment boundaries
         var c1 byte             // last byte
         var o1 [256]byte        // order 1 context -> predicted byte
