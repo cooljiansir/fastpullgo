@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/cooljiansir/spliter"
+	"github.com/cooljiansir/fastpush"
 	"os"
 	"bufio"
 	"fmt"
@@ -17,7 +17,7 @@ func main(){
 	defer file.Close()
 	r := bufio.NewReader(file)
 	for{
-		blks := spliter.Split(r,4*1024,1)
+		blks := fastpush.Split(r,4*1024,1)
 		if len(blks) == 0{
 			break
 		}
