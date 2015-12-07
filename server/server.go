@@ -1,8 +1,8 @@
-package fastpush
+package server
 
 import (
 	"io"
-	"github.com/cooljiansir/fastpush"
+	. "github.com/cooljiansir/fastpush/spliter"
 )
 
 
@@ -15,7 +15,7 @@ func Scan(){
 	
 }
 
-func readHelper(r io.Reader,b []byte)(int,error){
+func ReadHelper(r io.Reader,b []byte)(int,error){
 	if len(b) == 0{
 		return 0,nil
 	}
@@ -45,7 +45,7 @@ type IdxReader struct{
 	r io.Reader
 }
 
-func NewIdxReader(r io.Reader)*IdexReader{
+func NewIdxReader(r io.Reader)*IdxReader{
 	return &IdxReader{
 		r:r,
 	}
@@ -53,7 +53,34 @@ func NewIdxReader(r io.Reader)*IdexReader{
 
 
 func (r *IdxReader)Read(b []byte)(int,error){
-	
+	if len(b) == 0 {
+		return 0,nil
+	}
+	readed := 0
+	buf := [HashSize]byte{}
+	for {
+		n,err := ReadHelper(r.r,buf[:])
+		if n != HashSize{
+			return readed,errors.New("fastpush IdxReader error: size % HashSize != 0")
+		}
+		if err == io.EOF {
+			break
+		}
+		_,find := blockMap[buf]
+		if find {
+			b[readed] = '1'
+		}else{
+			b[readed] = '0'
+		}
+		readed ++ 
+		if == len(b){
+			break
+		}
+	}
+	if readed == 0{
+		return 0,io.EOF
+	}
+	return readed,nil
 }
 
 //CntReader read the content data(part)
