@@ -2,17 +2,57 @@ package server
 
 import (
 	"io"
+	"path/filepath"
+	"os"
+	"fmt"
+	"errors"
 	. "github.com/cooljiansir/fastpush/spliter"
 )
 
+type block struct {
+	filepath string
+	off	int
+	length	int
+}
 
-var blockMap map[[HashSize]byte]Block
+var blockMap map[[HashSize]byte]block
 
-func Scan(){
-	if blockMap == nil{
-		blockMap = make(map[[HashSize]byte]Block)
+func MapFile(mmap map[[HashSize]byte]block,filepath string){
+	fmt.Println("scan",filepath)
+	file,err := os.Open(filepath)
+	if err != nil{
+		panic(err)
 	}
-	
+	s := NewSpliter(file,4*1024)
+	blks := make([]Block,1,1)
+	for{
+		_,err := s.Read(blks)
+		if err == io.EOF{
+			break
+		}else if err != nil{
+			panic(err)
+		}
+		mmap[blks[0].Hash()] = block{
+			filepath:filepath,
+			off:blks[0].Offset(),
+			length:blks[0].Length(),
+		}
+	}
+}
+
+func Scan(path string){
+	if blockMap == nil{
+		blockMap = make(map[[HashSize]byte]block)
+	}
+	err := filepath.Walk(path, func(path string, f os.FileInfo, err error) error {
+                if ( f == nil ) {return err}
+                if f.IsDir() {return nil}
+                MapFile(blockMap,path)
+                return nil
+        })
+        if err != nil {
+                fmt.Printf("filepath.Walk() returned %v\n", err)
+        }
 }
 
 func ReadHelper(r io.Reader,b []byte)(int,error){
@@ -73,7 +113,7 @@ func (r *IdxReader)Read(b []byte)(int,error){
 			b[readed] = '0'
 		}
 		readed ++ 
-		if == len(b){
+		if readed == len(b){
 			break
 		}
 	}

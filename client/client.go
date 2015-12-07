@@ -3,7 +3,6 @@ package client
 
 import(
 	"io"
-	"fmt"
 	. "github.com/cooljiansir/fastpush/spliter"
 )
 
@@ -23,7 +22,6 @@ func NewIdxReader(r io.Reader)* IdxReader{
 }
 
 func (r *IdxReader)Read(b []byte)(int,error){
-	fmt.Println("length ",len(b))
 	readb := 0
 	blks := make([]Block,1,1)
 	for{
@@ -47,7 +45,6 @@ func (r *IdxReader)Read(b []byte)(int,error){
 	if readb == 0{
 		return 0,io.EOF
 	}
-	fmt.Printf("%x\n",b[:readb])
 	return readb,nil
 }
 
