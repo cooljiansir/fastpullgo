@@ -6,13 +6,15 @@ import (
 	"os"
 	"fmt"
 	"errors"
+	"encoding/binary"
+	"bufio"
 	. "github.com/cooljiansir/fastpush/spliter"
 )
 
 type block struct {
 	filepath string
-	off	int
-	length	int
+	off	int64
+	length	int64
 }
 
 var blockMap map[[HashSize]byte]block
@@ -64,7 +66,7 @@ func ReadHelper(r io.Reader,b []byte)(int,error){
 		n,err := r.Read(b[readed:])
 		if err == io.EOF && n == 0{
 			break
-		}else if err != nil && err != EOF{
+		}else if err != nil && err != io.EOF{
 			break
 		}
 		readed += n
@@ -129,12 +131,100 @@ func (r *IdxReader)Read(b []byte)(int,error){
 //[------hash-------][length][----data of a block---]
 //[------hash-------][000000]
 type CntReader struct{
-	r io.Reader
+	r *bufio.Reader
+	cur []byte	//current reading
+	filemap map[string]*os.File	//cash faster
 }
 
 
 func NewCntReader(r io.Reader)*CntReader{
 	return &CntReader{
-		r:r,
+		r:bufio.NewReader(r),
+		cur:[]byte{},
+		filemap:make(map[string]*os.File),
 	}
 }
+
+
+func (r *CntReader)Read(b []byte)(int,error){
+	if len(b)==0{
+		return 0,io.EOF
+	}
+	readed := 0
+	hashbuf := [HashSize]byte{}
+	for{
+		if len(r.cur)==0{
+			n,err := ReadHelper(r.r,hashbuf[:])
+			if err == io.EOF && n == 0{
+				break
+			}else if err != nil && err != io.EOF{
+				return readed,err
+			}
+			if n != HashSize {
+				return readed,fmt.Errorf("read format error: size not HashSize")
+			}
+			fmt.Printf("read hash [%x]\n",hashbuf)
+			length, err := binary.ReadUvarint(r.r)
+			if err != nil {
+				return readed,err
+			}
+			fmt.Printf("read length %d\n",length)
+			//exists
+			if length == 0{
+				blk,find := blockMap[hashbuf]
+				if !find {
+					return readed,fmt.Errorf("hash not found")
+				}
+				filename := blk.filepath
+				file,find := r.filemap[filename]
+				if !find {
+					file,err = os.Open(filename)
+					if err != nil{
+						return readed,err
+					}
+					r.filemap[filename] = file
+				}
+				len := blk.length
+				off := blk.off
+				_,err  := file.Seek(off,0)
+				if err != nil{
+					return readed,err
+				}
+				r.cur = make([]byte,len,len)
+				n,err := ReadHelper(file,r.cur)
+				if err != nil && err != io.EOF{
+					return readed,err
+				}
+				if int64(n) != len{
+					return readed,fmt.Errorf("read local file length wrong")
+				}
+			}else{
+				r.cur = make([]byte,length,length)
+				n,err := ReadHelper(r.r,r.cur)
+				if err != nil && err != io.EOF{
+					return readed,err
+				}
+				if uint64(n) != length{
+					return readed,fmt.Errorf("read net file length wrong")
+				}
+			}
+		}
+		n := copy(b[readed:],r.cur)
+		readed += n
+		r.cur = r.cur[n:]
+		if readed >= len(b){
+			break
+		}
+	}
+	if readed == 0{
+		for _,file := range r.filemap {
+			file.Close()
+		}
+		r.filemap = make(map[string]*os.File)
+		return 0,io.EOF
+	}
+	return readed,nil
+}
+
+
+

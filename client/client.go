@@ -79,7 +79,7 @@ type CntReader struct {
 
 type bblock struct{
         hash [HashSize]byte
-        length int
+        length int64
         needUp bool
 }
 
@@ -92,8 +92,8 @@ func NewCntReader(r io.Reader,blks chan bblock)*CntReader{
 
 func putUvarint(n uint64) []byte{
   buf := make([]byte, binary.MaxVarintLen64)
-  binary.PutUvarint(buf,n)
-  return buf
+  len := binary.PutUvarint(buf,n)
+  return buf[:len]
 }
 
 func readHelper(r io.Reader,b []byte)(int,error){
@@ -128,6 +128,7 @@ func (r *CntReader)Read(b []byte)(int,error){
 		fmt.Println("bblock read end")
             if ok{
               r.cur = blk.hash[:]
+		fmt.Printf("send hash [%x]\n",r.cur)
               buf := make([]byte,blk.length,blk.length)
               n,err := readHelper(r.r,buf)
               if (err == io.EOF && n == 0) || n!= len(buf){

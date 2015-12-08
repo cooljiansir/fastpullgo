@@ -13,6 +13,16 @@ func hashHandle(w http.ResponseWriter,r *http.Request){
 	reader := server.NewIdxReader(r.Body)
 	io.Copy(w,reader)
 }
+func fileHandle(w http.ResponseWriter,r *http.Request){
+	fmt.Println("A file request is comming")
+	reader := server.NewCntReader(r.Body)
+	ofile,err := os.Create("upload")
+	if err != nil{
+		panic(err)
+	}
+	defer ofile.Close()
+	io.Copy(ofile,reader)
+}
 
 func main(){
 	if len(os.Args) <2{
@@ -22,6 +32,7 @@ func main(){
 	path := os.Args[1]
 	server.Scan(path)
 	http.HandleFunc("/hash",hashHandle)
+	http.HandleFunc("/file",fileHandle)
 	fmt.Println("listening...")
 	err := http.ListenAndServe(":8080",nil)
 	if err != nil {

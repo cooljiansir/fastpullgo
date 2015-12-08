@@ -13,8 +13,8 @@ const HashSize = hasher.Size
 //Block contains information about a block
 type Block struct{
 	hash   [HashSize]byte
-	offset int
-	length int
+	offset int64
+	length int64
 }
 
 //Hash  hash
@@ -23,12 +23,12 @@ func (b *Block) Hash() [HashSize]byte {
 }
 
 //Length length
-func (b *Block) Length() int {
+func (b *Block) Length() int64 {
 	return b.length
 }
 
 //Offset offset
-func (b *Block) Offset() int {
+func (b *Block) Offset() int64 {
 	return b.offset
 }
 
@@ -41,7 +41,7 @@ type Spliter struct {
         minFragment int
         maxHash uint32
 	reader	*bufio.Reader
-	readed	int
+	readed	int64
 }
 
 func NewSpliter(r io.Reader,maxSize uint) *Spliter{
@@ -87,8 +87,8 @@ func (s *Spliter)Read(b []Block)(int,error){
 			sum := hasher.Sum(blockBuf)
                         nblk := Block{
                                 hash:   sum,
-                                offset: s.readed - len(blockBuf),
-                                length: len(blockBuf),
+                                offset: s.readed - int64(len(blockBuf)),
+                                length: int64(len(blockBuf)),
                         }
 			b[countb] = nblk
 			countb ++
@@ -104,8 +104,8 @@ func (s *Spliter)Read(b []Block)(int,error){
 		sum := hasher.Sum(blockBuf)
                 nblk := Block{  
                         hash:   sum,
-                        offset: s.readed - len(blockBuf),
-                        length: len(blockBuf),
+                        offset: s.readed - int64(len(blockBuf)),
+                        length: int64(len(blockBuf)),
                 }
 		b[countb] = nblk
 		countb ++
@@ -162,8 +162,8 @@ func Split(br *bufio.Reader, maxSize int, maxCount int) []Block {
 			sum := hasher.Sum(blockBuf)
 			nblk := Block{
 				hash:   sum,
-				offset: readed - bufLen,
-				length: bufLen,
+				offset: int64(readed - bufLen),
+				length: int64(bufLen),
 			}
 			res = append(res, nblk)
 			bufLen = 0
@@ -179,8 +179,8 @@ func Split(br *bufio.Reader, maxSize int, maxCount int) []Block {
 		sum := hasher.Sum(blockBuf)
 		nblk := Block{
 			hash:   sum,
-			offset: readed - bufLen,
-			length: bufLen,
+			offset: int64(readed - bufLen),
+			length: int64(bufLen),
 		}
 		res = append(res, nblk)
 	}
