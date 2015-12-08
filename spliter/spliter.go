@@ -67,7 +67,7 @@ func (s *Spliter)Read(b []Block)(int,error){
 	blockBuf := []byte{}
 	for{
 		c,err := s.reader.ReadByte()
-		if err == io.EOF {
+		if err == io.EOF && c == 0 {
 			break
 		}else if err != nil{
 			s.h = h
@@ -140,7 +140,7 @@ func Split(br *bufio.Reader, maxSize int, maxCount int) []Block {
 
 	for {
 		c, err := br.ReadByte()
-		if err == io.EOF {
+		if err == io.EOF && c == 0{
 			break
 		}
 		if err != nil {

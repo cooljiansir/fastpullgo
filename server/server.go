@@ -26,10 +26,10 @@ func MapFile(mmap map[[HashSize]byte]block,filepath string){
 	s := NewSpliter(file,4*1024)
 	blks := make([]Block,1,1)
 	for{
-		_,err := s.Read(blks)
-		if err == io.EOF{
+		n,err := s.Read(blks)
+		if err == io.EOF && n == 0{
 			break
-		}else if err != nil{
+		}else if err != nil && err != io.EOF{
 			panic(err)
 		}
 		mmap[blks[0].Hash()] = block{
@@ -62,10 +62,9 @@ func ReadHelper(r io.Reader,b []byte)(int,error){
 	readed := 0
 	for{
 		n,err := r.Read(b[readed:])
-		if err != nil && err != io.EOF{
-			return readed,err
-		}
-		if err == io.EOF{
+		if err == io.EOF && n == 0{
+			break
+		}else if err != nil && err != EOF{
 			break
 		}
 		readed += n
@@ -103,8 +102,10 @@ func (r *IdxReader)Read(b []byte)(int,error){
 		if n != HashSize{
 			return readed,errors.New("fastpush IdxReader error: size % HashSize != 0")
 		}
-		if err == io.EOF {
+		if err == io.EOF && n == 0{
 			break
+		}else if err != nil && err != io.EOF{
+			return readed,err
 		}
 		_,find := blockMap[buf]
 		if find {
