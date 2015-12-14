@@ -37,7 +37,7 @@ func MapFile(mmap map[[HashSize]byte]block,filepath string){
 		mmap[blks[0].Hash()] = block{
 			filepath:filepath,
 			off:blks[0].Offset(),
-			length:blks[0].Length(),
+			length:int64(len(blks[0].Data())),
 		}
 	}
 }

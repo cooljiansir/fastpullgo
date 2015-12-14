@@ -4,9 +4,9 @@ package client
 import(
 	"io"
 	"encoding/binary"
-	"errors"
 	"net/http"
 	"fmt"
+	"sync"
 	. "github.com/cooljiansir/fastpush/spliter"
 )
 
@@ -72,20 +72,20 @@ func (r *IdxReader)Read(b []byte)(int,error){
 //CntReader Read part of the data of content
 //
 type CntReader struct {
-        r io.Reader
+        idxr *IdxReader
         blks chan bblock
         cur []byte
 }
 
 type bblock struct{
+	data []byte
         hash [HashSize]byte
-        length int64
         needUp bool
 }
 
-func NewCntReader(r io.Reader,blks chan bblock)*CntReader{
+func NewCntReader(idxr *IdxReader,blks chan bblock)*CntReader{
         return &CntReader{
-                r:r,
+                idxr:idxr,
                 blks:blks,
         }
 }
@@ -129,16 +129,9 @@ func (r *CntReader)Read(b []byte)(int,error){
             if ok{
               r.cur = blk.hash[:]
 		fmt.Printf("send hash [%x]\n",r.cur)
-              buf := make([]byte,blk.length,blk.length)
-              n,err := readHelper(r.r,buf)
-              if (err == io.EOF && n == 0) || n!= len(buf){
-                return readed,errors.New("Index size not adapt to content")
-              }else if err != nil && err != io.EOF{
-                return readed,err
-              }
               if blk.needUp{
-                r.cur = append(r.cur,putUvarint(uint64(blk.length))...)
-                r.cur = append(r.cur,buf...)
+                r.cur = append(r.cur,putUvarint(uint64(len(blk.data)))...)
+                r.cur = append(r.cur,blk.data...)
               }else{
                 r.cur = append(r.cur,putUvarint(uint64(0))...)
               }
@@ -155,6 +148,7 @@ func (r *CntReader)Read(b []byte)(int,error){
           }
         }
         if readed == 0{
+	  fmt.Println("cnt read EOF")
           return 0,io.EOF
         }
 	fmt.Println("Cnt read End")
@@ -171,6 +165,9 @@ type Client struct{
 	bclosed bool
 	url string
 	getblks int	//index response blocks count
+	
+	err error	//error stat
+	mu sync.Mutex   // Mutex for error state
 }
 
 const bufsize = 1024
@@ -179,7 +176,7 @@ func NewClient(r1 io.Reader,r2 io.Reader,url string)*Client{
 	splited := make(chan Block,bufsize)
 	blks := make(chan bblock,bufsize)
 	idxr := NewIdxReader(r1,splited,bufsize)
-	cntr := NewCntReader(r2,blks)
+	cntr := NewCntReader(idxr,blks)
 	return &Client{
 		splited:splited,
 		blks:blks,
@@ -199,13 +196,22 @@ func (c *Client)Start(){
 			}
 			err := c.idxUpload()
 			if err != nil{
-				panic(err)
+				c.setErr(err)
+				break
 			}
 			if c.idxr.eof && c.getblks == c.idxr.readblks{
 				close(c.blks)
 			}
 		}
 	}()
+}
+func (c *Client)setErr(err error){
+	if err == nil{
+		return
+	}
+	c.mu.Lock()
+	c.err = err
+	c.mu.Unlock()
 }
 func (c *Client)idxUpload()error{
 	c.idxr.limit = bufsize
@@ -214,9 +220,7 @@ func (c *Client)idxUpload()error{
                 return err
         }
         client := &http.Client{}
-	fmt.Println("do request")
         res,err := client.Do(req)
-	fmt.Println("do request end")
         if err != nil {
                 return err
         }
@@ -250,8 +254,8 @@ func (c *Client)idxUpload()error{
 				return fmt.Errorf("receive format wrong")
 			}
 			bblk := bblock{
+				data:spb.Data(),
 				hash:spb.Hash(),
-				length:spb.Length(),
 				needUp:needUp,
 			}
 			fmt.Println("bblock send ")
@@ -263,5 +267,21 @@ func (c *Client)idxUpload()error{
 	return nil
 }
 func (c *Client)Read(b []byte)(int,error){
-	return c.cntr.Read(b)
+	c.mu.Lock()
+	err := c.err
+	c.mu.Unlock()
+	if err != nil{
+		panic(err)
+		return 0,err
+	}
+
+	n,err := c.cntr.Read(b)
+
+        c.mu.Lock()
+        err2 := c.err
+        c.mu.Unlock()
+        if err2 != nil{
+                return 0,err2
+        }
+	return n,err
 }
