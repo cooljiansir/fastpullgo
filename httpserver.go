@@ -9,7 +9,7 @@ import (
 )
 
 func hashHandle(w http.ResponseWriter,r *http.Request){
-	fmt.Println("A request is comming")
+	fmt.Println("A hash request is comming")
 	reader := server.NewIdxReader(r.Body)
 	io.Copy(w,reader)
 }

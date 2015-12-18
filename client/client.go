@@ -49,9 +49,9 @@ func (r *IdxReader)Read(b []byte)(int,error){
 			}else if err != nil && err != io.EOF{
 				return readb,err
 			}
-			fmt.Println("split block send")
+			//fmt.Println("split block send")
 			r.splited <- blks[0]
-			fmt.Println("split block send end")
+			//fmt.Println("split block send end")
 			hash := blks[0].Hash()
 			r.cur = hash[:]
 			r.limit --
@@ -125,9 +125,9 @@ func (r *CntReader)Read(b []byte)(int,error){
         }
         for{
           if len(r.cur) == 0{
-		fmt.Println("bblock read ")
+		//fmt.Println("bblock read ")
             blk,ok := <- r.blks
-		fmt.Println("bblock read end")
+		//fmt.Println("bblock read end")
             if ok{
               r.cur = blk.hash[:]
 
@@ -138,14 +138,13 @@ func (r *CntReader)Read(b []byte)(int,error){
 			}
 		}
 
-		fmt.Printf("send hash [%x]\n",r.cur)
+		//fmt.Printf("send hash [%x]\n",r.cur)
               if blk.needUp{
                 r.cur = append(r.cur,putUvarint(uint64(len(blk.data)))...)
                 r.cur = append(r.cur,blk.data...)
               }else{
                 r.cur = append(r.cur,putUvarint(uint64(0))...)
               }
-		fmt.Println("run to here")
             }else{
               break
             }
@@ -158,10 +157,10 @@ func (r *CntReader)Read(b []byte)(int,error){
           }
         }
         if readed == 0{
-	  fmt.Println("cnt read EOF")
+	  //fmt.Println("cnt read EOF")
           return 0,io.EOF
         }
-	fmt.Println("Cnt read End")
+	//fmt.Println("Cnt read End")
         return readed,nil
 }
 
@@ -245,9 +244,9 @@ func (c *Client)idxUpload()error{
         }
 	buf := make([]byte,bufsize,bufsize)
 	for{
-		fmt.Println("read response")
+		//fmt.Println("read response")
 		n,err := res.Body.Read(buf)
-		fmt.Println("read response end")
+		//fmt.Println("read response end")
 		if err == io.EOF && n == 0{
 			break
 		}
@@ -256,9 +255,9 @@ func (c *Client)idxUpload()error{
         	}
 		fmt.Println("received ",string(buf[:n]))
 		for i := 0;i<n;i++{
-			fmt.Println("split block read")
+			//fmt.Println("split block read")
 			spb,ok := <-c.splited
-			fmt.Println("split block read end")
+			//fmt.Println("split block read end")
 			if !ok{
 				return fmt.Errorf("splited chan closed unexpectly")
 			}
@@ -273,9 +272,9 @@ func (c *Client)idxUpload()error{
 				hash:spb.Hash(),
 				needUp:needUp,
 			}
-			fmt.Println("bblock send ")
+			//fmt.Println("bblock send ")
 			c.blks <- bblk
-			fmt.Println("bblock send end")
+			//fmt.Println("bblock send end")
 			c.getblks ++
 		}
 	}

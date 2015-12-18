@@ -18,10 +18,23 @@ type block struct {
 }
 
 var blockMap map[[HashSize]byte]block
+var fileOpenSeeker FileOpenSeeker
+var walker Walker
 
-func MapFile(mmap map[[HashSize]byte]block,filepath string){
+
+func SetFileOpenSeeker(o FileOpenSeeker){
+	fileOpenSeeker = o
+}
+
+func SetWalker(w Walker){
+	walker = w
+}
+
+
+func mapFile(mmap map[[HashSize]byte]block,filepath string){
 	fmt.Println("scan",filepath)
-	file,err := os.Open(filepath)
+	if fileOpenSeeker == nil { return }
+	file,err := fileOpenSeeker.OpenSeek(filepath,0)
 	if err != nil{
 		panic(err)
 	}
@@ -41,19 +54,33 @@ func MapFile(mmap map[[HashSize]byte]block,filepath string){
 		}
 	}
 }
+type Walker interface{
+	Walk(basepath string,f func(path string,isDir bool)error)error
+}
+type DefaultWalker struct{
+}
+func NewDefaultWalker()*DefaultWalker{
+	return &DefaultWalker{}
+}
 
+func (w *DefaultWalker) Walk(basepath string,fc func(path string,isDir bool) error ) error {
+	return filepath.Walk(basepath,func(path string, f os.FileInfo, err error) error {
+                if ( f == nil ) {return err}
+		return fc(path,f.IsDir())
+        })
+}
 func Scan(path string){
+	if walker == nil { return }
 	if blockMap == nil{
 		blockMap = make(map[[HashSize]byte]block)
 	}
-	err := filepath.Walk(path, func(path string, f os.FileInfo, err error) error {
-                if ( f == nil ) {return err}
-                if f.IsDir() {return nil}
-                MapFile(blockMap,path)
+	err := walker.Walk(path, func(path string, isDir bool) error {
+                if isDir {return nil}
+                mapFile(blockMap,path)
                 return nil
         })
         if err != nil {
-                fmt.Printf("filepath.Walk() returned %v\n", err)
+                fmt.Printf("Walk returned %v\n", err)
         }
 }
 
@@ -126,6 +153,31 @@ func (r *IdxReader)Read(b []byte)(int,error){
 	return readed,nil
 }
 
+// FileSeek returns an  io.ReadSeeker according to path
+type FileOpenSeeker interface{
+	OpenSeek(path string,off int64)(io.ReadCloser,error)
+}
+
+type DefaultFileOpenSeeker struct {
+}
+
+func NewDefaultFileOpenSeeker()* DefaultFileOpenSeeker{
+	return &DefaultFileOpenSeeker{}
+}
+
+func (r *DefaultFileOpenSeeker)OpenSeek(path string,off int64)(io.ReadCloser,error){
+	file,err := os.Open(path)
+	if err != nil{
+		return nil,err
+	}
+	_,err  = file.Seek(off,0)
+	if err != nil{
+		return nil,err
+	}
+	return file,nil
+}
+
+
 //CntReader read the content data(part)
 //and rebuild the whole data
 //[------hash-------][length][----data of a block---]
@@ -133,7 +185,6 @@ func (r *IdxReader)Read(b []byte)(int,error){
 type CntReader struct{
 	r *bufio.Reader
 	cur []byte	//current reading
-	filemap map[string]*os.File	//cash faster
 }
 
 
@@ -141,12 +192,13 @@ func NewCntReader(r io.Reader)*CntReader{
 	return &CntReader{
 		r:bufio.NewReader(r),
 		cur:[]byte{},
-		filemap:make(map[string]*os.File),
 	}
 }
 
-
 func (r *CntReader)Read(b []byte)(int,error){
+	if fileOpenSeeker == nil{
+		return 0,fmt.Errorf("file Opener is nil")
+	}
 	if len(b)==0{
 		return 0,io.EOF
 	}
@@ -163,12 +215,11 @@ func (r *CntReader)Read(b []byte)(int,error){
 			if n != HashSize {
 				return readed,fmt.Errorf("read format error: size not HashSize")
 			}
-			fmt.Printf("read hash [%x]\n",hashbuf)
+			//fmt.Printf("read hash [%x]\n",hashbuf)
 			length, err := binary.ReadUvarint(r.r)
 			if err != nil {
 				return readed,err
 			}
-			fmt.Printf("read length %d\n",length)
 			//exists
 			if length == 0{
 				blk,find := blockMap[hashbuf]
@@ -176,20 +227,12 @@ func (r *CntReader)Read(b []byte)(int,error){
 					return readed,fmt.Errorf("hash not found")
 				}
 				filename := blk.filepath
-				file,find := r.filemap[filename]
-				if !find {
-					file,err = os.Open(filename)
-					if err != nil{
-						return readed,err
-					}
-					r.filemap[filename] = file
-				}
-				len := blk.length
 				off := blk.off
-				_,err  := file.Seek(off,0)
+				file,err := fileOpenSeeker.OpenSeek(filename,off)
 				if err != nil{
 					return readed,err
 				}
+				len := blk.length
 				r.cur = make([]byte,len,len)
 				n,err := ReadHelper(file,r.cur)
 				if err != nil && err != io.EOF{
@@ -198,6 +241,7 @@ func (r *CntReader)Read(b []byte)(int,error){
 				if int64(n) != len{
 					return readed,fmt.Errorf("read local file length wrong")
 				}
+				file.Close()
 			}else{
 				r.cur = make([]byte,length,length)
 				n,err := ReadHelper(r.r,r.cur)
@@ -217,10 +261,6 @@ func (r *CntReader)Read(b []byte)(int,error){
 		}
 	}
 	if readed == 0{
-		for _,file := range r.filemap {
-			file.Close()
-		}
-		r.filemap = make(map[string]*os.File)
 		return 0,io.EOF
 	}
 	return readed,nil
@@ -230,5 +270,11 @@ func (r *CntReader)Read(b []byte)(int,error){
 func init(){
 	if blockMap == nil{
 		blockMap = make(map[[HashSize]byte]block)
+	}
+	if fileOpenSeeker == nil{
+		fileOpenSeeker = NewDefaultFileOpenSeeker()
+	}
+	if walker == nil{
+		walker = NewDefaultWalker()
 	}
 }
