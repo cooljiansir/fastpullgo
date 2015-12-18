@@ -19,14 +19,7 @@ func main(){
         if err != nil{
                 panic(err)
         }
-	file2,err := os.Open(filestr)
-	if err != nil{
-		panic(err)
-	}
-	if err != nil{
-		panic(err)
-	}
-        clt := client.NewClient(file,file2,"http://127.0.0.1:8080/hash")
+        clt := client.NewClient(file,"http://127.0.0.1:8080/hash")
         clt.Start()
 	if err != nil{
 		panic(err)

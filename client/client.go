@@ -75,6 +75,8 @@ type CntReader struct {
         idxr *IdxReader
         blks chan bblock
         cur []byte
+
+	teeWriter io.Writer	//when read the origin data write it to teeWriter
 }
 
 type bblock struct{
@@ -128,6 +130,14 @@ func (r *CntReader)Read(b []byte)(int,error){
 		fmt.Println("bblock read end")
             if ok{
               r.cur = blk.hash[:]
+
+		if r.teeWriter != nil{
+			_,err := r.teeWriter.Write(blk.data)
+			if err != nil{
+				return readed,err
+			}
+		}
+
 		fmt.Printf("send hash [%x]\n",r.cur)
               if blk.needUp{
                 r.cur = append(r.cur,putUvarint(uint64(len(blk.data)))...)
@@ -172,10 +182,10 @@ type Client struct{
 
 const bufsize = 1024
 
-func NewClient(r1 io.Reader,r2 io.Reader,url string)*Client{
+func NewClient(r io.Reader,url string)*Client{
 	splited := make(chan Block,bufsize)
 	blks := make(chan bblock,bufsize)
-	idxr := NewIdxReader(r1,splited,bufsize)
+	idxr := NewIdxReader(r,splited,bufsize)
 	cntr := NewCntReader(idxr,blks)
 	return &Client{
 		splited:splited,
@@ -186,6 +196,11 @@ func NewClient(r1 io.Reader,r2 io.Reader,url string)*Client{
 		url:url,
 		getblks:0,
 	}
+}
+func NewClientTee(r io.Reader,url string,w io.Writer)*Client{
+	cli := NewClient(r,url)
+	cli.cntr.teeWriter = w
+	return cli
 }
 func (c *Client)Start(){
 	go func(){

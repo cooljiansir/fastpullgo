@@ -227,4 +227,8 @@ func (r *CntReader)Read(b []byte)(int,error){
 }
 
 
-
+func init(){
+	if blockMap == nil{
+		blockMap = make(map[[HashSize]byte]block)
+	}
+}
