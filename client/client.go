@@ -20,6 +20,9 @@ type IdxReader struct {
 	limit int	//max block count to read,if reached return io.EOF
 	eof bool	//EOF of file (r EOF) NOT limit end
 	readblks int	//blocks readed
+	
+	bytesRead int64	//bytes read
+	rBytesRead int64//bytes read from r
 }
 
 func NewIdxReader(r io.Reader,splited chan Block,limit int)* IdxReader{
@@ -31,6 +34,8 @@ func NewIdxReader(r io.Reader,splited chan Block,limit int)* IdxReader{
 		limit:limit,
 		eof:false,
 		readblks:0,
+		bytesRead:0,
+		rBytesRead:0,
 	}
 }
 
@@ -53,6 +58,7 @@ func (r *IdxReader)Read(b []byte)(int,error){
 			r.splited <- blks[0]
 			//fmt.Println("split block send end")
 			hash := blks[0].Hash()
+			r.rBytesRead += int64(len(blks[0].Data()))
 			r.cur = hash[:]
 			r.limit --
 			r.readblks ++
@@ -67,6 +73,7 @@ func (r *IdxReader)Read(b []byte)(int,error){
 	if readb == 0{
 		return 0,io.EOF
 	}
+	r.bytesRead += int64(readb)
 	return readb,nil
 }
 //CntReader Read part of the data of content
@@ -77,6 +84,8 @@ type CntReader struct {
         cur []byte
 
 	teeWriter io.Writer	//when read the origin data write it to teeWriter
+
+	bytesRead int64		//bytes readed
 }
 
 type bblock struct{
@@ -89,6 +98,7 @@ func NewCntReader(idxr *IdxReader,blks chan bblock)*CntReader{
         return &CntReader{
                 idxr:idxr,
                 blks:blks,
+		bytesRead:0,
         }
 }
 
@@ -160,6 +170,7 @@ func (r *CntReader)Read(b []byte)(int,error){
 	  //fmt.Println("cnt read EOF")
           return 0,io.EOF
         }
+	r.bytesRead += int64(readed)
 	//fmt.Println("Cnt read End")
         return readed,nil
 }
@@ -298,4 +309,14 @@ func (c *Client)Read(b []byte)(int,error){
                 return 0,err2
         }
 	return n,err
+}
+
+func (c *Client)IdxBytesRead()int64{
+	return c.idxr.bytesRead
+}
+func (c *Client)CntBytesRead()int64{
+	return c.cntr.bytesRead
+}
+func (c *Client)ReaderBytesRead()int64{
+	return c.idxr.rBytesRead
 }
