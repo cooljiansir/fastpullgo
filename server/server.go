@@ -17,9 +17,74 @@ type block struct {
 	length	int64
 }
 
-var blockMap map[[HashSize]byte]block
 var fileOpenSeeker FileOpenSeeker
 var walker Walker
+
+
+
+
+type inblock strcut{
+	filepath int32
+	off	int64
+	length	int64
+}
+
+type fileDesc struct{
+	filename string
+	ref int32
+}
+
+type metaDataManager  struct{
+	//fingerprint map
+	blockMap map[[HashSize]byte]inblock
+
+	//map filename to int32
+	fileMap map[string]int32
+	
+	//map int32 to filename
+	fileIdMap map[int32]fileDesc
+
+	//max id
+	maxid int32
+	
+	//max map size
+	maxMapLen int32
+}
+func NewMetaDataManager(max int32)*metaDataManager{
+	filemap := make(map[string]int32)
+	fileIdmap := make(map[int32]fileDesc)
+	blockMap := make(map[[HashSize]byte]inblock)
+	return &metaDataManager{
+		blockMap:blockMap,
+		fileMap:fileMap,
+		fileIdMap:fileIdMap,
+		maxid:0,
+		maxMapLen:max,
+	}
+}
+func (m *metaDataManager)find(h [HashSize]byte)(block,bool){
+	inb,find := m.blockMap[h]
+	if !find {return nil,find}
+	desc,find := m.fileIdMap[inb.filepath]
+	if !find {return nil,find}
+
+	//TODO overflow?
+	desc.ref ++
+	m.fileIdMap[inb.filepath] = desc
+
+	return block{
+		filepath:desc.filename,
+		off:inb.off,
+		length:inb.length,
+	}
+}
+
+func (m *metaDataManager)insert(h [HashSize]byte,b block){
+	fileid,find := m.fileMap[b.filepath]
+	
+}
+
+
 
 
 func SetFileOpenSeeker(o FileOpenSeeker){
