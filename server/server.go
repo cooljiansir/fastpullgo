@@ -21,8 +21,6 @@ var fileOpenSeeker FileOpenSeeker
 var walker Walker
 
 
-
-
 type inblock strcut{
 	filepath int32
 	off	int64
