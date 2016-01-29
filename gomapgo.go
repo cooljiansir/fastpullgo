@@ -31,22 +31,20 @@ type poolnode struct{
 }
 
 type mytree struct{
-	root *node
 	countnode int
 	poolroot *poolnode
 	poolrear *poolnode
+
+	bucket []*node
 }
 func NewMap()*mytree{
-	nn := &node{
-		next:[TREEN]*node{},
-		kv:nil,
-	}
+	bucket := make([]*node,1<<24,1<<24)
 	pp := &poolnode{
 		pool:[POOLSIZE]node{},
 		next:nil,
 	}
 	return &mytree{
-		root:nn,
+		bucket:bucket,
 		countnode:0,
 		poolroot:pp,
 		poolrear:pp,
@@ -66,13 +64,23 @@ func (t *mytree)NewNode()*node{
 	t.countnode ++
 	return nn
 }
-var maxdepth uint
+
 func (t *mytree)find(k string)(string,bool){
-	p := t.root
-	
 	kb := []byte(k)
-	h := hasher.Sum(kb)
-	bit := uint(0)
+        h := hasher.Sum(kb)
+        index := uint(h[0]) + uint(h[1]) << 8 + uint(h[2]) << 16
+	p := t.bucket[index]
+	if p == nil{
+		return "",false
+	}
+	value,find := t.find2(h,p,k)
+	return value,find
+}
+
+
+var maxdepth uint
+func (t *mytree)find2(h [hasher.Size]byte,p *node,k string)(string,bool){
+	bit := uint(24)
 	var idn uint
 	for ;p!=nil;{
 		if p.kv != nil{
@@ -90,12 +98,23 @@ func (t *mytree)find(k string)(string,bool){
 }
 
 func (t *mytree)insert(pair kv){
-	p := t.root
-	pf := p
-	
 	kb := []byte(pair.key)
         h := hasher.Sum(kb)
-        bit := uint(0)
+        index := uint(h[0]) + uint(h[1]) << 8 + uint(h[2]) << 16
+	p := t.bucket[index]
+	if p == nil{
+		nn := t.NewNode()
+		nn.kv = &pair
+		t.bucket[index] = nn
+	}else{
+		t.insert2(h,p,pair)
+	}
+}
+
+func (t *mytree)insert2(h [hasher.Size]byte,p *node,pair kv){
+	pf := p
+	
+        bit := uint(24)
         var idn uint
 
         for ;p!=nil;{   
@@ -209,12 +228,12 @@ func testgolang(n int){
 
 func testtime(n int){
 	testempty(n)
-	testmytree(n)
-	fmt.Println("maxdepth:",maxdepth)
+	//testmytree(n)
+	//fmt.Println("maxdepth:",maxdepth)
 	testgolang(n)
 }
 
 
 func main(){
-	testtime(10000000)	
+	testtime(1000000)	
 }
