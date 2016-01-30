@@ -22,15 +22,10 @@ func fileHandle(w http.ResponseWriter,r *http.Request){
 	}
 	defer ofile.Close()
 	io.Copy(ofile,reader)
+	reader.Close()
 }
 
 func main(){
-	if len(os.Args) <2{
-		fmt.Println("format: test path")
-		return
-	}
-	path := os.Args[1]
-	server.Scan(path)
 	http.HandleFunc("/hash",hashHandle)
 	http.HandleFunc("/file",fileHandle)
 	fmt.Println("listening...")

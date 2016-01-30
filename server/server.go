@@ -2,150 +2,28 @@ package server
 
 import (
 	"io"
-	"path/filepath"
-	"os"
 	"fmt"
 	"errors"
 	"encoding/binary"
 	"bufio"
 	. "github.com/cooljiansir/fastpush/spliter"
+	. "github.com/cooljiansir/fastpush/fingerdb"
 )
 
-type block struct {
-	filepath string
-	off	int64
-	length	int64
-}
 
-var fileOpenSeeker FileOpenSeeker
-var walker Walker
+var fingerdb *FingerDB
 
+const BASEPATH = "fastpush"
+const DBFILE = "fastpush.db"
 
-type inblock strcut{
-	filepath int32
-	off	int64
-	length	int64
-}
-
-type fileDesc struct{
-	filename string
-	ref int32
-}
-
-type metaDataManager  struct{
-	//fingerprint map
-	blockMap map[[HashSize]byte]inblock
-
-	//map filename to int32
-	fileMap map[string]int32
-	
-	//map int32 to filename
-	fileIdMap map[int32]fileDesc
-
-	//max id
-	maxid int32
-	
-	//max map size
-	maxMapLen int32
-}
-func NewMetaDataManager(max int32)*metaDataManager{
-	filemap := make(map[string]int32)
-	fileIdmap := make(map[int32]fileDesc)
-	blockMap := make(map[[HashSize]byte]inblock)
-	return &metaDataManager{
-		blockMap:blockMap,
-		fileMap:fileMap,
-		fileIdMap:fileIdMap,
-		maxid:0,
-		maxMapLen:max,
-	}
-}
-func (m *metaDataManager)find(h [HashSize]byte)(block,bool){
-	inb,find := m.blockMap[h]
-	if !find {return nil,find}
-	desc,find := m.fileIdMap[inb.filepath]
-	if !find {return nil,find}
-
-	//TODO overflow?
-	desc.ref ++
-	m.fileIdMap[inb.filepath] = desc
-
-	return block{
-		filepath:desc.filename,
-		off:inb.off,
-		length:inb.length,
-	}
-}
-
-func (m *metaDataManager)insert(h [HashSize]byte,b block){
-	fileid,find := m.fileMap[b.filepath]
-	
-}
-
-
-
-
-func SetFileOpenSeeker(o FileOpenSeeker){
-	fileOpenSeeker = o
-}
-
-func SetWalker(w Walker){
-	walker = w
-}
-
-
-func mapFile(mmap map[[HashSize]byte]block,filepath string){
-	fmt.Println("scan",filepath)
-	if fileOpenSeeker == nil { return }
-	file,err := fileOpenSeeker.OpenSeek(filepath,0)
+func init(){
+	var err error
+	fingerdb,err = NewFingerDB(DBFILE,BASEPATH)
 	if err != nil{
-		panic(err)
+		fmt.Println()
 	}
-	s := NewSpliter(file,4*1024)
-	blks := make([]Block,1,1)
-	for{
-		n,err := s.Read(blks)
-		if err == io.EOF && n == 0{
-			break
-		}else if err != nil && err != io.EOF{
-			panic(err)
-		}
-		mmap[blks[0].Hash()] = block{
-			filepath:filepath,
-			off:blks[0].Offset(),
-			length:int64(len(blks[0].Data())),
-		}
-	}
-}
-type Walker interface{
-	Walk(basepath string,f func(path string,isDir bool)error)error
-}
-type DefaultWalker struct{
-}
-func NewDefaultWalker()*DefaultWalker{
-	return &DefaultWalker{}
 }
 
-func (w *DefaultWalker) Walk(basepath string,fc func(path string,isDir bool) error ) error {
-	return filepath.Walk(basepath,func(path string, f os.FileInfo, err error) error {
-                if ( f == nil ) {return err}
-		return fc(path,f.IsDir())
-        })
-}
-func Scan(path string){
-	if walker == nil { return }
-	if blockMap == nil{
-		blockMap = make(map[[HashSize]byte]block)
-	}
-	err := walker.Walk(path, func(path string, isDir bool) error {
-                if isDir {return nil}
-                mapFile(blockMap,path)
-                return nil
-        })
-        if err != nil {
-                fmt.Printf("Walk returned %v\n", err)
-        }
-}
 
 func ReadHelper(r io.Reader,b []byte)(int,error){
 	if len(b) == 0{
@@ -199,7 +77,11 @@ func (r *IdxReader)Read(b []byte)(int,error){
 		}else if err != nil && err != io.EOF{
 			return readed,err
 		}
-		_,find := blockMap[buf]
+		find := false
+		if fingerdb != nil{
+			fmt.Println("Query")
+			_,find = fingerdb.Find(buf)
+		}
 		if find {
 			b[readed] = '1'
 		}else{
@@ -216,30 +98,6 @@ func (r *IdxReader)Read(b []byte)(int,error){
 	return readed,nil
 }
 
-// FileSeek returns an  io.ReadSeeker according to path
-type FileOpenSeeker interface{
-	OpenSeek(path string,off int64)(io.ReadCloser,error)
-}
-
-type DefaultFileOpenSeeker struct {
-}
-
-func NewDefaultFileOpenSeeker()* DefaultFileOpenSeeker{
-	return &DefaultFileOpenSeeker{}
-}
-
-func (r *DefaultFileOpenSeeker)OpenSeek(path string,off int64)(io.ReadCloser,error){
-	file,err := os.Open(path)
-	if err != nil{
-		return nil,err
-	}
-	_,err  = file.Seek(off,0)
-	if err != nil{
-		return nil,err
-	}
-	return file,nil
-}
-
 
 //CntReader read the content data(part)
 //and rebuild the whole data
@@ -247,7 +105,8 @@ func (r *DefaultFileOpenSeeker)OpenSeek(path string,off int64)(io.ReadCloser,err
 //[------hash-------][000000]
 type CntReader struct{
 	r *bufio.Reader
-	cur []byte	//current reading
+	cur []byte		//current reading
+	container *Container	//finger,block data container
 }
 
 
@@ -255,13 +114,11 @@ func NewCntReader(r io.Reader)*CntReader{
 	return &CntReader{
 		r:bufio.NewReader(r),
 		cur:[]byte{},
+		container:fingerdb.NewContainer(),
 	}
 }
 
 func (r *CntReader)Read(b []byte)(int,error){
-	if fileOpenSeeker == nil{
-		return 0,fmt.Errorf("file Opener is nil")
-	}
 	if len(b)==0{
 		return 0,io.EOF
 	}
@@ -285,6 +142,16 @@ func (r *CntReader)Read(b []byte)(int,error){
 			}
 			//exists
 			if length == 0{
+				metadata,find := fingerdb.Find(hashbuf)
+				if !find {
+					return readed,fmt.Errorf("hash not found")
+				}
+				file,err := fingerdb.NewBlockReader(metadata)
+				if err != nil{
+					return readed,err
+				}
+
+				/*
 				blk,find := blockMap[hashbuf]
 				if !find {
 					return readed,fmt.Errorf("hash not found")
@@ -295,19 +162,22 @@ func (r *CntReader)Read(b []byte)(int,error){
 				if err != nil{
 					return readed,err
 				}
-				len := blk.length
+				len := blk.length*/
+				
+				len := metadata.Length
 				r.cur = make([]byte,len,len)
 				n,err := ReadHelper(file,r.cur)
 				if err != nil && err != io.EOF{
 					return readed,err
 				}
-				if int64(n) != len{
+				if uint32(n) != len{
 					return readed,fmt.Errorf("read local file length wrong")
 				}
 				file.Close()
 			}else{
 				r.cur = make([]byte,length,length)
 				n,err := ReadHelper(r.r,r.cur)
+				r.container.WriteBlock(hashbuf,r.cur)
 				if err != nil && err != io.EOF{
 					return readed,err
 				}
@@ -329,15 +199,6 @@ func (r *CntReader)Read(b []byte)(int,error){
 	return readed,nil
 }
 
-
-func init(){
-	if blockMap == nil{
-		blockMap = make(map[[HashSize]byte]block)
-	}
-	if fileOpenSeeker == nil{
-		fileOpenSeeker = NewDefaultFileOpenSeeker()
-	}
-	if walker == nil{
-		walker = NewDefaultWalker()
-	}
+func (r *CntReader)Close()error{
+	return r.container.Close()	
 }
