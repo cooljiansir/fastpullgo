@@ -10,6 +10,10 @@ import (
 //HashSize is the hash size
 const HashSize = hasher.Size
 
+//the default max block size
+//averenge is max/4
+const BLKSIZE = 1024*8*4
+
 //Block contains information about a block
 type Block struct{
 	data []byte

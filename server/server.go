@@ -20,8 +20,9 @@ func init(){
 	var err error
 	fingerdb,err = NewFingerDB(DBFILE,BASEPATH)
 	if err != nil{
-		fmt.Println()
+		panic(err)
 	}
+	fmt.Println("fast push server started....")
 }
 
 
@@ -55,6 +56,8 @@ type IdxReader struct{
 }
 
 func NewIdxReader(r io.Reader)*IdxReader{
+	fmt.Println("NewIdxReader\n\n\n\n\n")
+
 	return &IdxReader{
 		r:r,
 	}
@@ -79,7 +82,6 @@ func (r *IdxReader)Read(b []byte)(int,error){
 		}
 		find := false
 		if fingerdb != nil{
-			fmt.Println("Query")
 			_,find = fingerdb.Find(buf)
 		}
 		if find {
@@ -111,6 +113,8 @@ type CntReader struct{
 
 
 func NewCntReader(r io.Reader)*CntReader{
+	fmt.Println("NewCntReader\n\n\n\n\n")
+
 	return &CntReader{
 		r:bufio.NewReader(r),
 		cur:[]byte{},

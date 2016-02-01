@@ -29,7 +29,7 @@ func NewIdxReader(r io.Reader,splited chan Block,limit int)* IdxReader{
 	return &IdxReader{
 		r:r,
 		cur:[]byte{},
-		s:NewSpliter(r,1024*4),
+		s:NewSpliter(r,BLKSIZE),
 		splited:splited,
 		limit:limit,
 		eof:false,
