@@ -68,7 +68,13 @@ type FingerDB struct{
 	basepath string		//file path to store containers
 }
 
-func NewFingerDB(dbfile string,basepath string)(*FingerDB,error){
+func NewFingerDB(dbpath string)(*FingerDB,error){
+	dbfile := fmt.Sprintf("%s/finger.db",dbpath)
+	if _, err := os.Stat(dbpath); os.IsNotExist(err) {
+		if err := os.MkdirAll(dbpath, 0777); err != nil {
+			return nil,err
+		}
+	}
 	db, err := bolt.Open(dbfile, 0600, nil)
 	if err != nil{
 		return nil,err
@@ -96,7 +102,7 @@ func NewFingerDB(dbfile string,basepath string)(*FingerDB,error){
 		db:db,
 		cache:make(map[[spliter.HashSize]byte]MetaData),
 		dbfile:dbfile,
-		basepath:basepath,
+		basepath:dbpath,
 	},nil
 }
 
@@ -173,8 +179,6 @@ type Container struct{
 	containerid uint64
 	blkWriteCloser io.WriteCloser
 	blkbytes uint64		//the bytes of blks of current file
-	metaWriteCloser io.WriteCloser
-	metabytes uint64	//the bytes of meta of current file
 
 	//buffer
 	dbWriteBuffer chan [][spliter.HashSize]byte
@@ -203,15 +207,9 @@ func (c *Container)newFile()error{
 	if err != nil{
 		return err
 	}
-	metaWriteCloser,err := os.Create(c.fingerdb.getMetaPath(mxc))
-	if err != nil{
-		return err
-	}
 	c.containerid = mxc
 	c.blkbytes = 0
-	c.metabytes = 0
 	c.blkWriteCloser = blkWriteCloser
-	c.metaWriteCloser = metaWriteCloser
 	return nil
 }
 
@@ -219,11 +217,7 @@ func (c *Container)Close()error{
 	fmt.Println("Closing...")
 	close(c.dbWriteBuffer)
 	<-c.flushed
-	err := c.blkWriteCloser.Close()
-	if err != nil{
-		return err
-	}
-	return c.metaWriteCloser.Close()
+	return  c.blkWriteCloser.Close()
 }
 func (c *Container)flushDBBuffer()error{
 	for {

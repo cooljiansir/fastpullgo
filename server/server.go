@@ -13,12 +13,9 @@ import (
 
 var fingerdb *FingerDB
 
-const BASEPATH = "fastpush"
-const DBFILE = "fastpush.db"
-
-func init(){
+func Start(dbpath string){
 	var err error
-	fingerdb,err = NewFingerDB(DBFILE,BASEPATH)
+	fingerdb,err = NewFingerDB(dbpath)
 	if err != nil{
 		panic(err)
 	}
@@ -56,8 +53,10 @@ type IdxReader struct{
 }
 
 func NewIdxReader(r io.Reader)*IdxReader{
-	fmt.Println("NewIdxReader\n\n\n\n\n")
-
+	if fingerdb == nil{
+		return nil
+	}
+	//fmt.Println("NewIdxReader\n\n\n\n\n")
 	return &IdxReader{
 		r:r,
 	}
@@ -113,8 +112,10 @@ type CntReader struct{
 
 
 func NewCntReader(r io.Reader)*CntReader{
-	fmt.Println("NewCntReader\n\n\n\n\n")
-
+	//fmt.Println("NewCntReader\n\n\n\n\n")
+	if fingerdb == nil{
+		return nil
+	}
 	return &CntReader{
 		r:bufio.NewReader(r),
 		cur:[]byte{},

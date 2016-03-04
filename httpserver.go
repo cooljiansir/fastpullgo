@@ -29,6 +29,7 @@ func main(){
 	http.HandleFunc("/hash",hashHandle)
 	http.HandleFunc("/file",fileHandle)
 	fmt.Println("listening...")
+	server.Start("/var/fastpush/")
 	err := http.ListenAndServe(":8080",nil)
 	if err != nil {
 		panic(err)

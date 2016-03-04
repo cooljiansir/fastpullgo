@@ -264,7 +264,7 @@ func (c *Client)idxUpload()error{
        		if err != nil && err != io.EOF{
 			return err
         	}
-		fmt.Println("received ",string(buf[:n]))
+		//fmt.Println("received ",string(buf[:n]))
 		for i := 0;i<n;i++{
 			//fmt.Println("split block read")
 			spb,ok := <-c.splited
