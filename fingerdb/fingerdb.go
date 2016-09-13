@@ -140,8 +140,6 @@ func (fdb *FingerDB)Find(f [spliter.HashSize]byte)(MetaData,bool){
 
 	//return MetaData{},false
 
-
-
 	meta,find := fdb.cache[f]
 	if find {
 		return meta,find
@@ -168,11 +166,12 @@ func (fdb *FingerDB)Find(f [spliter.HashSize]byte)(MetaData,bool){
 		log.Fatal(err)
 		return MetaData{},false
 	}
+	fmt.Printf("\rFind in disk")
+	fdb.cache[f] = meta
 	return meta,true
 }
 
-const MAXMETASIZE = 1024*1024
-const MAXBLOCKSIZE = 1024*1024*1024
+const MAXBLOCKSIZE = 1024*1024
 
 type Container struct{
 	fingerdb *FingerDB
@@ -212,12 +211,14 @@ func (c *Container)newFile()error{
 	c.blkWriteCloser = blkWriteCloser
 	return nil
 }
-
+func (c *Container)closeFile()error{
+	return  c.blkWriteCloser.Close()
+}
 func (c *Container)Close()error{
 	fmt.Println("Closing...")
 	close(c.dbWriteBuffer)
 	<-c.flushed
-	return  c.blkWriteCloser.Close()
+	return  c.closeFile()
 }
 func (c *Container)flushDBBuffer()error{
 	for {
@@ -304,21 +305,19 @@ func (c *Container)WriteBlock(f [spliter.HashSize]byte,blk []byte)error{
 	}
 
 	c.blkbytes += uint64(n)
-
-	/*buf,err := m.tobyte()
-	if err != nil{
-		log.Fatal(err)
-	}
-	if err := c.fingerdb.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(BUCKET))
-		if err := b.Put(f[:], buf); err != nil {
-	        	return err
-    		}
-	    	return nil
-	}); err != nil {
-		log.Fatal(err)
-	}*/
 	
+	if c.blkbytes >= MAXBLOCKSIZE {
+		fmt.Println("new file")
+		err = c.closeFile()
+		if err != nil{
+			return err
+		}
+		err = c.newFile()
+		if err != nil{
+			return err
+		}
+	}
+
 	return c.writeDBBuffer(f,m)
 }
 
