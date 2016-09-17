@@ -70,17 +70,14 @@ const MAXCONTAINER = "maxcontainer"
 
 const dbWriteBufferN = 1024
 
-type RefMeta struct{
-	meta MetaData	//metadata
-	ref int		//reference count
-}
 type FingerDB struct{
 	db *bolt.DB
 	dbc chan bool		//mutex for db 
-	cache map[[spliter.HashSize]byte]RefMeta
+	cache map[[spliter.HashSize]byte]MetaData
 	dbfile string		//boltdb file location
 	basepath string		//file path to store containers
 }
+
 
 func NewFingerDB(dbpath string)(*FingerDB,error){
 	dbfile := fmt.Sprintf("%s/finger.db",dbpath)
@@ -118,13 +115,22 @@ func NewFingerDB(dbpath string)(*FingerDB,error){
 	<- dbc
 	return &FingerDB{
 		db:db,
-		cache:make(map[[spliter.HashSize]byte]RefMeta),
+		cache:make(map[[spliter.HashSize]byte]MetaData),
 		dbfile:dbfile,
 		basepath:dbpath,
 		dbc:dbc,
 	},nil
 }
-
+func (fdb *FingerDB)BeginTx(){
+	//fmt.Println("Enterring...")
+	fdb.dbc <- true
+	//fmt.Println("Entered...")
+}
+func (fdb *FingerDB)EndTx(){
+	//fmt.Println("Quiting...")
+	<- fdb.dbc
+	//fmt.Println("Quited")
+}
 
 func (fdb *FingerDB)getBlockPath(containerid uint64)string{
 	return fmt.Sprintf("%s/%d.blk",fdb.basepath,containerid)
@@ -136,8 +142,8 @@ func (fdb *FingerDB)getMetaPath(containerid uint64)string{
 
 //db maxContainer++
 func (fdb *FingerDB)addMaxContainer()(uint64,error){
+	fdb.BeginTx()
 	mxc := uint64(0)
-	fdb.dbc <- true
 	if err := fdb.db.Update(func(tx *bolt.Tx) error {
 	    	b := tx.Bucket([]byte(DBBUCKET))
 		bmx := b.Get([]byte(MAXCONTAINER))
@@ -150,10 +156,10 @@ func (fdb *FingerDB)addMaxContainer()(uint64,error){
 		}
 		return nil
 	}); err != nil {
-		<- fdb.dbc
+		fdb.EndTx()
 		return 0,err
 	}
-	<- fdb.dbc
+	fdb.EndTx()
 	return mxc,nil
 }
 
@@ -162,14 +168,15 @@ func (fdb *FingerDB)Find(f [spliter.HashSize]byte)(MetaData,bool){
 
 	//return MetaData{},false
 
+	fdb.BeginTx()
 	meta,find := fdb.cache[f]
 	if find {
-		return meta.meta,find
+		fdb.EndTx()
+		return meta,find
 	}
 	buf := new(bytes.Buffer)
-	fdb.dbc <- true
 	if err := fdb.db.View(func(tx *bolt.Tx) error {
-		fmt.Println("Look up-----> ",byte2string(f[:]))
+		//fmt.Println("Look up-----> ",byte2string(f[:]))
 		b := tx.Bucket([]byte(BUCKET))
 		value := b.Get(f[:])
 		if value == nil {
@@ -178,24 +185,24 @@ func (fdb *FingerDB)Find(f [spliter.HashSize]byte)(MetaData,bool){
 			buf.Write(value)
 			find = true
 		}
-		fmt.Println("Look up<----- ",byte2string(f[:]))
+		//fmt.Println("Look up<----- ",byte2string(f[:]))
 		return nil
 	}); err != nil {
-		<- fdb.dbc
+		fdb.EndTx()
 		log.Fatal(err)
 	}
-	<- fdb.dbc
+	fdb.EndTx()
 	if !find{
 		return MetaData{},find
 	}
-	meta_,err := readMeta(buf)
+	meta,err := readMeta(buf)
 	if err != nil{
 		log.Fatal(err)
 		return MetaData{},false
 	}
 	fmt.Printf("\rFind in disk")
 	fdb.cache[f] = meta
-	return meta_,true
+	return meta,true
 }
 
 const MAXBLOCKSIZE = 1024*1024
@@ -254,44 +261,40 @@ func (c *Container)flushDBBuffer()error{
 			break
 		}
 		fmt.Println("Flushing one...")
-		c.fingerdb.dbc <- true
+		c.fingerdb.BeginTx()
 		fmt.Println("Updating ...")
         	if err := c.fingerdb.db.Update(func(tx *bolt.Tx) error {
                 	b := tx.Bucket([]byte(BUCKET))
 			for _,f := range dbbuff{
 				m,find := c.fingerdb.cache[f]
 				if !find{
-					return  nil	//flushed
+					fmt.Printf("%s has been flushed before\n",byte2string(f[:]))
+					//return  nil	//flushed
+					continue
 				}
-		        	buf,err := m.meta.tobyte()
+		        	buf,err := m.tobyte()
 			        if err != nil{
         			        return err
         			}
 		                if err := b.Put(f[:], buf); err != nil {
 	        	                return err
 	               	 	}
-				fmt.Println("Put ",byte2string(f[:]))
+				//fmt.Println("Put ",byte2string(f[:]))
 			}
 	                return nil
         	}); err != nil {
-			<- c.fingerdb.dbc
+			c.fingerdb.EndTx()
                 	return err
         	}
 		for _,f := range dbbuff{
-			m,_ := c.fingerdb.cache[f]
-			if m.ref == 1 {
-				delete(c.fingerdb.cache,f)
-			}else{
-				m.ref --
-				c.fingerdb.cache[f] = m
-			}
+			delete(c.fingerdb.cache,f)
 		}
 		fmt.Println("Upadted.")
-		<- c.fingerdb.dbc
+		c.fingerdb.EndTx()
 		fmt.Println("Flushed one.")
 	}
 	{
-		c.fingerdb.dbc <- true
+		c.fingerdb.BeginTx()
 		fmt.Println("Updating ...")
         	if err := c.fingerdb.db.Update(func(tx *bolt.Tx) error {
                 	b := tx.Bucket([]byte(BUCKET))
@@ -300,30 +303,24 @@ func (c *Container)flushDBBuffer()error{
 				if !find{
 					return  nil	//flushed
 				}
-		        	buf,err := m.meta.tobyte()
+		        	buf,err := m.tobyte()
 			        if err != nil{
         			        return err
         			}
 		                if err := b.Put(f[:], buf); err != nil {
 	        	                return err
 	               	 	}
-				fmt.Println("Put ",byte2string(f[:]))
+				//fmt.Println("Put ",byte2string(f[:]))
 			}
 	                return nil
         	}); err != nil {
-			<- c.fingerdb.dbc
+			c.fingerdb.EndTx()
                 	return err
         	}
 		for _,f := range c.dbWBufferPre{
-			m,_ := c.fingerdb.cache[f]
-			if m.ref == 1 {
-				delete(c.fingerdb.cache,f)
-			}else{
-				m.ref --
-				c.fingerdb.cache[f] = m
-			}
+			delete(c.fingerdb.cache,f)
 		}
-		<- c.fingerdb.dbc
+		c.fingerdb.EndTx()
 		fmt.Println("Upadted.")
 	}
 	c.flushed <- true
@@ -331,23 +328,14 @@ func (c *Container)flushDBBuffer()error{
 	return nil
 }
 func (c *Container)writeDBBuffer(f [spliter.HashSize]byte,m MetaData)error{
-	mm,find := c.fingerdb.cache[f]
-	if !find { 
-		c.fingerdb.cache[f] = RefMeta{
-			meta:m,
-			ref:1,
-			}
-	}else{
-		c.fingerdb.cache[f] = RefMeta{
-			meta:m,
-			ref:mm.ref + 1,
-			}
-	}
+	c.fingerdb.BeginTx()
+	c.fingerdb.cache[f] = m
 	c.dbWBufferPre = append(c.dbWBufferPre,f)
 	if len(c.dbWBufferPre) >= dbWriteBufferN{
 		c.dbWriteBuffer <- c.dbWBufferPre
 		c.dbWBufferPre = [][spliter.HashSize]byte{}
 	}
+	c.fingerdb.EndTx()
 	return nil
 }
 
